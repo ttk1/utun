@@ -59,7 +59,7 @@ Here is an example for running everything locally for simplicity.
 First, run `utun-frontend` and `utun-backend` with the following command.
 
 ```sh
-$ utun-frontend & utun-backend
+$ (trap 'kill 0' SIGINT; utun-frontend & utun-backend & wait)
 ```
 
 Next, start the server with the following command.
