@@ -264,7 +264,7 @@ class FrontProtocol(asyncio.DatagramProtocol):
         self.backend_host = backend_host
         self.backend_port = backend_port
         self.proxy_protocol: Optional[ProxyFrontProtocol] = None
-        self.error_count = 1
+        self.error_count = 0
         self.lock = asyncio.Lock()
 
     def connection_made(self, transport):
