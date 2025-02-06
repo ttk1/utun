@@ -18,23 +18,24 @@ def frontend():
         help="frontend port, default: 9999",
     )
     parser.add_argument(
-        "--backend-host",
-        default="127.0.0.1",
-        help="backend host, default: 127.0.0.1",
+        "--backend-config",
+        action="append",
+        required=True,
+        help="backend configuration in format 'local_port:host:port'",
     )
-    parser.add_argument(
-        "--backend-port",
-        type=int,
-        default=8888,
-        help="backend port, default: 8888",
-    )
+
     args = parser.parse_args()
+
+    backend_configs = {}
+    for config in args.backend_config:
+        local_port, host, port = config.split(":")
+        backend_configs[int(local_port)] = (host, int(port))
+
     asyncio.run(
         main(
             args.host,
             args.port,
-            args.backend_host,
-            args.backend_port,
+            backend_configs,
         )
     )
 
