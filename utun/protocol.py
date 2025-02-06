@@ -259,12 +259,15 @@ class BackProtocol(asyncio.DatagramProtocol):
 
 
 class FrontProtocol(asyncio.DatagramProtocol):
-    def __init__(self, logger: logging.Logger, backend_host: str, backend_port: int):
+    def __init__(
+        self, logger: logging.Logger, backend_configs: dict[int, tuple[str, int]]
+    ):
         self.logger = logger
-        self.backend_host = backend_host
-        self.backend_port = backend_port
-        self.proxy_protocol: Optional[ProxyFrontProtocol] = None
-        self.error_count = 0
+        self.backend_configs = backend_configs
+        self.proxy_protocols: dict[int, Optional[ProxyFrontProtocol]] = {
+            port: None for port in backend_configs.keys()
+        }
+        self.error_counts: dict[int, int] = {port: 0 for port in backend_configs.keys()}
         self.lock = asyncio.Lock()
 
     def connection_made(self, transport):
@@ -278,29 +281,40 @@ class FrontProtocol(asyncio.DatagramProtocol):
         asyncio.ensure_future(self.forward_data(message))
 
     async def forward_data(self, message: Message):
-        if self.proxy_protocol is None or self.proxy_protocol.is_closing():
+        dest_port = message.orig_port
+        if dest_port not in self.backend_configs:
+            self.logger.warning(f"No backend configuration for port {dest_port}")
+            return
+
+        backend_host, backend_port = self.backend_configs[dest_port]
+        proxy_protocol = self.proxy_protocols[dest_port]
+
+        if proxy_protocol is None or proxy_protocol.is_closing():
             async with self.lock:
-                if self.proxy_protocol is None or self.proxy_protocol.is_closing():
+                if proxy_protocol is None or proxy_protocol.is_closing():
                     try:
                         loop = asyncio.get_running_loop()
                         _, proxy_protocol = await loop.create_connection(
                             lambda: ProxyFrontProtocol(
                                 self.logger, front_protocol=self
                             ),
-                            self.backend_host,
-                            self.backend_port,
+                            backend_host,
+                            backend_port,
                         )
-                        self.proxy_protocol = proxy_protocol
-                        self.error_count = 0
+                        self.proxy_protocols[dest_port] = proxy_protocol
+                        self.error_counts[dest_port] = 0
                     except ConnectionRefusedError as e:
-                        self.error_count += 1
-                        if self.error_count <= 10 or self.error_count % 10 == 0:
+                        self.error_counts[dest_port] += 1
+                        if (
+                            self.error_counts[dest_port] <= 10
+                            or self.error_counts[dest_port] % 10 == 0
+                        ):
                             self.logger.warning(
-                                f"Connection to backend {(self.backend_host,self.backend_port)}"
-                                f" refused (count: {self.error_count}): {e}"
+                                f"Connection to backend {(backend_host, backend_port)}"
+                                f" refused (count: {self.error_counts[dest_port]}): {e}"
                             )
                         return
-        self.proxy_protocol.write(message.to_bytes())
+        proxy_protocol.write(message.to_bytes())
 
     def sendto(self, data, addr):
         self.transport.sendto(data, addr)

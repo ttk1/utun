@@ -19,10 +19,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def main(host: str, port: int, backend_host: str, backend_port: int):
+async def main(host: str, port: int, backend_configs: dict[int, tuple[str, int]]):
     loop = asyncio.get_running_loop()
     _ = await loop.create_datagram_endpoint(
-        lambda: FrontProtocol(logger, backend_host, backend_port),
+        lambda: FrontProtocol(logger, backend_configs),
         local_addr=(host, port),
     )
     while True:
